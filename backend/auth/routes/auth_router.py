@@ -1,10 +1,10 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 
 from auth.models.token import Token
-from auth.services.auth_service import authenticate_user, create_acces_token
+from auth.services.auth_service import authenticate_user, create_access_token
 
 auth_router = APIRouter(
     prefix="/auth",
@@ -12,32 +12,21 @@ auth_router = APIRouter(
 )
 
 @auth_router.post("/login")
-async def login_for_access_token(
+def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ):
-    #  -> Token
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=401,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-    if user['role'] == "admin":
-        access_token_expires = timedelta(minutes=1440)
-        access_token = create_acces_token(
-            data={'sub': user['email'], 'admin': True, 'uid': str(user['_id'])},
-            expires_delta=access_token_expires
-        )
+    access_token_expires = timedelta(minutes=1440)
+    access_token = create_access_token(
+        data={'sub': str(user['_id']), 'email': user['email'], 'admin': True if user.get('role', 'user') == "admin" else False},
+        expires_delta=access_token_expires
+    )
 
-    elif user['role'] == "user":
-        access_token_expires = timedelta(minutes=1440)
-        access_token = create_acces_token(
-            data={'sub': user['email'], 'admin': False, 'uid': str(user['_id'])},
-            expires_delta=access_token_expires
-        )
-    else:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="invalid role")
-
-    return { "token": Token(access_token=access_token, token_type="bearer"), "id": str(user['_id']) }
+    return {"token": Token(access_token=access_token, token_type="bearer"), 'id': str(user['_id'])}

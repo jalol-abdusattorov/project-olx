@@ -1,14 +1,10 @@
 import os
-from jwt.exceptions import InvalidTokenError
-from typing import Annotated
 from dotenv import load_dotenv, find_dotenv
 from datetime import datetime, timedelta, timezone
-from fastapi.security import OAuth2PasswordBearer
-from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
+from fastapi import Depends, HTTPException
 import jwt
 
-from auth.models.token import TokenData
-from models import UserRequest
 from auth.utils.auth_utils import verify_password
 from mongodb import users_collection
 
@@ -19,6 +15,7 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 
 oauth2scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+bearer_scheme = HTTPBearer()
 
 def authenticate_user(email: str, password: str):
     user = users_collection.find_one({ "email": email })
@@ -29,7 +26,8 @@ def authenticate_user(email: str, password: str):
 
     return user
 
-def create_acces_token(data: dict, expires_delta: timedelta | None = None):
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -39,30 +37,22 @@ def create_acces_token(data: dict, expires_delta: timedelta | None = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: Annotated[str, Depends(oauth2scheme)]):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"}
-    )
 
+def user_id_from_token(token: str) -> str | None:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get('sub')
+    except jwt.PyJWTError:
+        print("Invalid or expired token")
+        return None
 
-        if email is None:
-            raise credentials_exception
+    return payload.get("sub")
 
-        token_data = TokenData(email=email)
 
-    except InvalidTokenError:
-        raise credentials_exception
+def get_current_user_id(
+    creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> str:
+    user_id = user_id_from_token(creds.credentials)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    user = users_collection.find_one({ "email": token_data.email })
-    if not user:
-        raise credentials_exception
-
-    return user
-
-async def get_current_active_user(current_user: UserRequest = Depends(get_current_user)):
-    return current_user
+    return user_id
