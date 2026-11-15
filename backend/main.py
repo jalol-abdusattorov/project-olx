@@ -1,19 +1,20 @@
-from contextlib import asynccontextmanager
-from datetime import datetime as dt, timezone
 import os
 from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
+from datetime import datetime as dt, timezone
 from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
-import jwt
 from apscheduler.schedulers.background import BackgroundScheduler
+import jwt
 
 from mongodb import listings_collection
 from routes.users import router as users_router
 from auth.routes.auth_router import auth_router
 from routes.categories import router as categories_router
 from routes.subcategories import router as subcategories_router
-from routes.listings import router as listings_crouter
+from routes.listings import router as listings_router
+from routes.attributes import router as attributes_router
 
 
 dotenv_path = find_dotenv()
@@ -68,13 +69,13 @@ def update_expired_listings():
     if result.modified_count > 0:
         print(f"Background task: Expired {result.modified_count} listings.")
 
-
 scheduler = BackgroundScheduler()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- STARTUP ---
-    scheduler.add_job(update_expired_listings, "interval", minutes=1)
+    scheduler.add_job(update_expired_listings, "interval", minutes=3)
     scheduler.start()
     print("Scheduler started.")
     
@@ -92,7 +93,8 @@ app.include_router(users_router, tags=['Users'])
 app.include_router(auth_router, prefix='/api')
 app.include_router(categories_router, tags=["Categories"])
 app.include_router(subcategories_router, tags=["Subcategories"])
-app.include_router(listings_crouter, tags=["Listings"])
+app.include_router(listings_router, tags=["Listings"])
+app.include_router(attributes_router, tags=["Attributes"])
 
 
 @app.get("/")

@@ -28,6 +28,7 @@ def create_listing(
     if not description: raise HTTPException(status_code=400, detail="Description can't be empty")
 
     current_subcategory = listing.subcategory_path[-1]
+    print(current_subcategory)
 
     expiration = dt.now(timezone.utc) + timedelta(days=listing.expires_in)
 
@@ -40,12 +41,16 @@ def create_listing(
         "subcategory_path": listing.subcategory_path,
         "current_subcategory": current_subcategory,
 
-        "location": listing.location,
+        "location": {
+            "country": listing.location.country,
+            "city": listing.location.city,
+            "district": listing.location.district
+        },
         "attributes": attributes,
 
-        "status": "active", # -- "sold" / "expired"
+        "status": "active", # --  "sold" / "expired"
         "views_count": 0,
-
+ 
         "created_at": dt.now(timezone.utc),
         "expires_at": expiration
     }
