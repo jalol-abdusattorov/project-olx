@@ -5,7 +5,7 @@ import bson
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from auth.models.token import Token
-from models import UserRequest
+from models import UserEditRequest, UserRequest
 from mongodb import *
 from auth.utils.auth_utils import get_password_hash
 from routes.route_utils import swagger_bearer_scheme
@@ -15,7 +15,7 @@ from auth.services.auth_service import create_access_token, get_current_user_id
 router = APIRouter()
 
 invalid_id_exception = HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ID format")
-# permission_denied_exception = HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+permission_denied_exception = HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
 
 
 @router.post("/users")
@@ -81,3 +81,65 @@ def get_user(
         "ok": True,
         "user": user,
     }
+
+
+# AUTHORIZED
+@router.put("/users")
+def edit_profile(
+    edit: UserEditRequest,
+    current_user: str = Depends(get_current_user_id)
+):
+    try:
+        uid = ObjectId(current_user)
+    except bson.errors.InvalidId:
+        raise invalid_id_exception
+
+    edit = edit.model_dump(exclude_none=True)
+
+    if "profile" in edit:
+        profile = edit.pop("profile")
+
+        for key, value in profile.items():
+            edit[f"profile.{key}"] = value
+
+    
+    updated = users_collection.update_one({ "_id": uid }, { "$set": edit })    
+    if not updated.matched_count:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "ok": True,
+        "message": "Edited successfuly" if updated.modified_count == 1 else f"Already like this. Nothing changed.",
+    }
+
+
+# AUTHORIZED & ADMIN
+@router.delete("/users/{user_id}")
+def delete_user_account(
+    request: Request,
+    _: Annotated[str, Depends(swagger_bearer_scheme)],
+
+    user_id: str,
+    delete_listings: bool,
+):
+    try:
+        uid = ObjectId(user_id)
+    except bson.errors.InvalidId:
+        raise invalid_id_exception
+
+    if not request.state.admin:
+        raise permission_denied_exception
+
+    deleted_user = users_collection.find_one_and_delete({ "_id": uid })
+    if not deleted_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if delete_listings:
+        deleted_count = listings_collection.delete_many({ "seller_id": uid }).deleted_count
+
+        return {
+            "ok": True,
+            "deleted": f"Deleted {deleted_count} documents (listings)" if deleted_count else "Deleted 0 documents (listings). User never had listings"
+        }
+
+    listings_collection.update_many({  })

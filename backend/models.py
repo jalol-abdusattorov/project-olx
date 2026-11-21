@@ -19,6 +19,14 @@ class UserRequest(BaseModel):
 
     location: Location
 
+    @model_validator(mode="after")
+    def validate_inputs(self):
+        self.username = self.username.strip()
+        self.fullname = self.fullname.strip()
+        self.phone = self.phone.strip()
+        self.about = self.about.strip()
+        
+        return self
 
 class SubcategoryRequest(BaseModel):
     parent_id: str
@@ -58,6 +66,34 @@ class Location(BaseModel):
         return self
 
 
+class Payment(BaseModel):
+    payment_method: Literal[
+        "payme",
+        "click",
+        "uzum",
+        "paynet",   
+        "uzcard",
+        "humo",
+        "visa",
+        "mastercard",
+        "cash",
+    ]
+    price: float | int
+    currency: Literal["UZS", "USD"]
+
+    @model_validator(mode="after")
+    def validate_currency_rules(self) -> "Payment":
+        local_only_methods = {"payme", "click", "uzum", "paynet", "uzcard", "humo"}
+
+        if self.currency == "USD" and self.payment_method in local_only_methods:
+            raise ValueError(f"{self.payment_method.capitalize()} only supports UZS payments, not USD.")
+
+        if self.currency == "UZS" and self.price < 100:
+            raise ValueError("Price is suspiciously low for UZS (under 100 so'm). Did you mean USD?")
+
+        return self
+
+
 class ListingRequest(BaseModel):
     title: str
     description: str
@@ -66,6 +102,8 @@ class ListingRequest(BaseModel):
     # [ "6ab2...", "6ab45..." ]
     subcategory_path: list
     location: Location
+
+    payment: Payment
     expires_in: int = 30 # days
 
     @model_validator(mode="after")
@@ -144,5 +182,78 @@ class AttributeRequest(BaseModel):
         attr = attributes_collection.find_one({ "category_id": self.category_id, "subcategory_id": self.subcategory_id })
         if attr:
             raise ValueError("Attribute already exists")
+
+        return self
+
+
+class FilterOption(BaseModel):
+    key: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+
+class BaseFilterRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=100)
+
+    type: Literal[
+        "select",
+        "multi_select",
+        "range",
+        "number",
+        "boolean",
+        "text"
+    ]
+
+    options: list[FilterOption] | None = None
+    min: float | None = None
+    max: float | None = None
+
+    @model_validator(mode="after")
+    def validate_filter(self):
+        if self.type in ("select", "multi_select"):
+            if not self.options:
+                raise ValueError("Options are required for select filters")
+        else:
+            self.options = None
+
+        if self.type == "range":
+            if self.min is None or self.max is None:
+                raise ValueError("Min and max are required for range filters")
+
+        if self.type in ("range", "number"):
+            if self.min is not None and self.max is not None:
+                if self.min >= self.max:
+                    raise ValueError("Min must be less than max")
+        elif self.min is not None or self.max is not None:
+            raise ValueError("Min and max are only allowed for numeric filters")
+
+        return self
+
+
+class FilterRequest(BaseFilterRequest):
+    is_active: bool = True
+
+class SpecialFilterRequest(BaseFilterRequest):
+    subcategory_id: str
+    unit: str | None = None
+
+class Profile(BaseModel):
+    fullname: str | None = None
+    phone: str | None = None
+    about: str | None = None
+
+
+class UserEditRequest(BaseModel):
+    username: str | None = None
+    profile: Profile | None = None
+
+    @model_validator(mode="after")
+    def validate_inputs(self):
+        if self.username:
+            self.username = self.username.strip()
+
+        if self.profile:
+            self.profile.fullname = self.profile.fullname.strip() if self.profile.fullname else None
+            self.profile.phone = self.profile.phone.strip() if self.profile.phone else None
+            self.profile.about = self.profile.about.strip() if self.profile.about else None
 
         return self

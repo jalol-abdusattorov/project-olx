@@ -17,3 +17,4 @@ subcategories_collection = db.subcategories
 listings_collection = db.listings
 reviews_collection = db.reviews
 attributes_collection = db.attributes
+filters_collection = db.filters

@@ -15,6 +15,7 @@ from routes.categories import router as categories_router
 from routes.subcategories import router as subcategories_router
 from routes.listings import router as listings_router
 from routes.attributes import router as attributes_router
+from routes.filters import router as filters_router
 
 
 dotenv_path = find_dotenv()
@@ -95,6 +96,7 @@ app.include_router(categories_router, tags=["Categories"])
 app.include_router(subcategories_router, tags=["Subcategories"])
 app.include_router(listings_router, tags=["Listings"])
 app.include_router(attributes_router, tags=["Attributes"])
+app.include_router(filters_router, tags=["Filters"])
 
 
 @app.get("/")
